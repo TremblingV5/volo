@@ -443,3 +443,67 @@ impl<S> Layer<S> for WithOptLayer {
         WithOptService::new(inner, self.opt)
     }
 }
+
+#[cfg(all(test, feature = "multipart"))]
+mod tests {
+    use std::future::Future;
+
+    use http::header::CONTENT_TYPE;
+    use motore::service::Service;
+
+    use super::*;
+    use crate::{
+        body::BodyConversion,
+        client::{Client, multipart::Form, test_helpers::MockTransport},
+    };
+
+    struct InspectMultipartRequest;
+
+    impl Service<ClientContext, Request> for InspectMultipartRequest {
+        type Response = Response;
+        type Error = ClientError;
+
+        fn call(
+            &self,
+            _: &mut ClientContext,
+            req: Request,
+        ) -> impl Future<Output = Result<Self::Response>> + Send {
+            async move {
+                assert_eq!(req.method(), Method::POST);
+                assert_eq!(req.uri(), "/upload");
+
+                let content_type = req
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .expect("multipart should set content-type")
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+                let boundary = content_type
+                    .strip_prefix("multipart/form-data; boundary=")
+                    .expect("content-type should include multipart boundary")
+                    .to_owned();
+
+                let (_, body) = req.into_parts();
+                let body = body.into_string().await.unwrap();
+                let expected = format!(
+                    "--{boundary}\r\nContent-Disposition: form-data; \
+                     name=\"field\"\r\n\r\nvalue\r\n--{boundary}--\r\n"
+                );
+                assert_eq!(body, expected);
+
+                Ok(Response::default())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn multipart_sets_content_type_and_body() {
+        let client = Client::builder()
+            .mock(MockTransport::service(InspectMultipartRequest))
+            .unwrap();
+        let form = Form::new().text("field", "value");
+
+        client.post("/upload").multipart(form).send().await.unwrap();
+    }
+}
