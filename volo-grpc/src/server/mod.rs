@@ -135,6 +135,17 @@ impl<IL, OL, SP> Server<IL, OL, SP> {
     /// can be set with [`Server::http2_keepalive_timeout`].
     ///
     /// Default is no HTTP2 keepalive (`None`).
+    /// Sets the max pending accept reset streams for HTTP2 connections.
+    ///
+    /// Default is `None`.
+    pub fn http2_max_pending_accept_reset_streams(
+        mut self,
+        max: impl Into<Option<usize>>,
+    ) -> Self {
+        self.http2_config.max_pending_accept_reset_streams = max.into();
+        self
+    }
+
     pub fn http2_keepalive_interval(mut self, interval: impl Into<Option<Duration>>) -> Self {
         self.http2_config.http2_keepalive_interval = interval.into();
         self
@@ -419,6 +430,7 @@ impl<IL, OL, SP> Server<IL, OL, SP> {
                         .max_frame_size(self.http2_config.max_frame_size)
                         .max_send_buf_size(self.http2_config.max_send_buf_size)
                         .max_header_list_size(self.http2_config.max_header_list_size);
+                        .max_pending_accept_reset_streams(self.http2_config.max_pending_accept_reset_streams)
 
                     let mut watch = rx.clone();
                     spawn(async move {
@@ -510,6 +522,7 @@ pub struct Http2Config {
     pub(crate) max_frame_size: Option<u32>,
     pub(crate) max_send_buf_size: usize,
     pub(crate) max_header_list_size: u32,
+    pub(crate) max_pending_accept_reset_streams: Option<usize>,
     pub(crate) accept_http1: bool,
 }
 
@@ -526,6 +539,7 @@ impl Default for Http2Config {
             max_send_buf_size: DEFAULT_MAX_SEND_BUF_SIZE,
             max_header_list_size: DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE,
             accept_http1: false,
+            max_pending_accept_reset_streams: None,
         }
     }
 }
